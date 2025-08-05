@@ -1,0 +1,290 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BokoEthno Jazz Festival - Login Wajah</title>
+    
+    <!-- Tailwind CSS for modern styling -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Google Fonts for a modern, clean look -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700&display=swap" rel="stylesheet">
+    
+    <!-- face-api.js for face detection -->
+    <script src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
+
+    <style>
+        body {
+            font-family: 'Poppins', sans-serif;
+            background-image: url('Ratu boko.png');
+            background-size: cover;
+            background-position: center;
+            background-repeat: no-repeat;
+            background-attachment: fixed;
+        }
+
+        #camera-container {
+            position: relative;
+            width: 100%;
+            max-width: 640px;
+            margin: auto;
+            border-radius: 1rem;
+            overflow: hidden;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.3);
+            border: 2px solid rgba(255, 255, 255, 0.2);
+            aspect-ratio: 16 / 9; 
+            transition: aspect-ratio 0.4s ease;
+        }
+
+        #video, #frame-image, #tracker-canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+        }
+
+        #video {
+            object-fit: cover;
+            transform: scaleX(-1);
+        }
+        
+        #frame-image {
+            pointer-events: none;
+            object-fit: fill;
+        }
+        
+        #tracker-canvas {
+            pointer-events: none;
+        }
+
+        .frame-btn {
+            transition: all 0.3s ease;
+            border: 2px solid transparent;
+        }
+
+        .frame-btn.active {
+            border-color: #FBBF24;
+            background-color: #4A5568;
+            transform: scale(1.1);
+        }
+
+        #loader {
+            border-top-color: #FBBF24;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body class="bg-gray-900 text-white flex flex-col items-center justify-center min-h-screen p-4">
+
+    <div class="w-full max-w-2xl mx-auto text-center">
+        
+        <header class="mb-6">
+            <h1 class="text-4xl md:text-5xl font-bold text-amber-400 tracking-tight" style="text-shadow: 2px 2px 4px rgba(0,0,0,0.6);">Boko<span class="text-white">Ethno</span>Jazz</h1>
+            <p class="text-gray-200 mt-2" style="text-shadow: 1px 1px 2px rgba(0,0,0,0.6);">Festival Login Experience</p>
+        </header>
+
+        <div id="camera-container" class="bg-gray-800 flex items-center justify-center">
+            <div id="loader-container" class="text-center">
+                <div id="loader" class="w-16 h-16 rounded-full border-4 border-gray-600 mx-auto"></div>
+                <p id="loading-text" class="mt-4 text-gray-400">Menyalakan kamera...</p>
+            </div>
+            <video id="video" autoplay muted playsinline></video>
+            <img id="frame-image" src="" class="hidden" alt="Bingkai Kultural">
+            <canvas id="tracker-canvas"></canvas>
+        </div>
+
+        <!-- Frame Selection -->
+        <div id="frame-selection" class="mt-6 hidden">
+            <h2 class="text-lg font-semibold mb-4">Pilih Bingkai Kultural Anda</h2>
+            <div id="frame-buttons-container" class="flex justify-center items-center flex-wrap gap-3 sm:gap-4">
+                <!-- Frame buttons will be added here by JavaScript -->
+            </div>
+        </div>
+
+        <!-- User Input and Action -->
+        <div id="user-action" class="mt-6 w-full max-w-sm mx-auto hidden">
+            <input type="text" id="name-input" placeholder="Ketik nama Anda di sini..." class="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-amber-400 transition">
+            <button id="scan-btn" class="w-full mt-4 bg-amber-500 hover:bg-amber-600 text-gray-900 font-bold py-3 px-6 rounded-lg text-lg transition-transform transform hover:scale-105 shadow-lg">
+                Konfirmasi Kehadiran
+            </button>
+        </div>
+    </div>
+
+    <!-- Welcome Modal (Initially Hidden) -->
+    <div id="welcome-modal" class="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center p-4 hidden z-50">
+        <div class="bg-gray-800 rounded-2xl p-8 text-center max-w-md w-full shadow-2xl border border-amber-400/50 transform transition-all scale-95 opacity-0" id="modal-content">
+            <h2 class="text-3xl font-bold text-amber-400">Selamat Datang!</h2>
+            <p id="welcome-name" class="mt-2 text-xl text-white"></p>
+            <p class="mt-4 text-gray-300">Nikmati harmoni budaya dan musik di BokoEthno Jazz Festival!</p>
+            <button id="close-modal-btn" class="mt-6 bg-gray-600 hover:bg-gray-500 text-white font-bold py-2 px-8 rounded-lg transition">
+                Tutup
+            </button>
+        </div>
+    </div>
+
+    <script>
+        // --- DOM ELEMENT REFERENCES ---
+        const video = document.getElementById('video');
+        const cameraContainer = document.getElementById('camera-container');
+        const trackerCanvas = document.getElementById('tracker-canvas');
+        const loaderContainer = document.getElementById('loader-container');
+        const loadingText = document.getElementById('loading-text');
+        const frameSelection = document.getElementById('frame-selection');
+        const frameButtonsContainer = document.getElementById('frame-buttons-container');
+        const frameImage = document.getElementById('frame-image');
+        const userAction = document.getElementById('user-action');
+        const scanBtn = document.getElementById('scan-btn');
+        const nameInput = document.getElementById('name-input');
+        const welcomeModal = document.getElementById('welcome-modal');
+        const modalContent = document.getElementById('modal-content');
+        const welcomeName = document.getElementById('welcome-name');
+        const closeModalBtn = document.getElementById('close-modal-btn');
+        
+        // --- APPLICATION STATE ---
+        let faceDetected = false;
+        
+        // --- FRAME CONFIGURATION ---
+        const frames = [
+            { name: 'Indonesia Portrait', file: 'Indonesia Portrait.png' },
+            { name: 'Jawa', file: 'Jawa.png' },
+            { name: 'Bali', file: 'Bali.png' },
+            { name: 'Sumatra', file: 'Sumatra.png' },
+            { name: 'Sulawesi', file: 'Sulawesi.png' },
+            { name: 'Papua', file: 'Papua.png' },
+            { name: 'Tanpa Bingkai', file: null }
+        ];
+
+        // --- CORE FUNCTIONS ---
+        async function loadModels() {
+            const MODEL_URL = 'https://cdn.jsdelivr.net/gh/justadudewhohacks/face-api.js@0.22.2/weights';
+            try {
+                // --- MODIFIED: Using a more precise model ---
+                loadingText.innerText = 'Memuat model deteksi presisi...';
+                await faceapi.nets.ssdMobilenetv1.loadFromUri(MODEL_URL);
+                loadingText.innerText = 'Memuat model penanda wajah...';
+                await faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL);
+                console.log("All models loaded successfully");
+            } catch (error) {
+                console.error("Error loading models: ", error);
+                loadingText.innerText = "Gagal memuat model AI.";
+                loaderContainer.querySelector('#loader').style.display = 'none';
+            }
+        }
+
+        async function startVideo() {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ video: {} });
+                video.srcObject = stream;
+            } catch (err) {
+                console.error("Error accessing webcam:", err);
+                loadingText.innerText = "Error: Tidak dapat mengakses kamera.";
+                loaderContainer.querySelector('#loader').style.display = 'none';
+            }
+        }
+
+        function buildFrameButtons() {
+            frameButtonsContainer.innerHTML = '';
+            frames.forEach(frame => {
+                const btn = document.createElement('button');
+                btn.className = 'frame-btn bg-gray-800 rounded-lg px-4 py-2 font-semibold text-white';
+                btn.textContent = frame.name;
+                
+                btn.addEventListener('click', () => {
+                    document.querySelectorAll('.frame-btn').forEach(b => b.classList.remove('active'));
+                    btn.classList.add('active');
+
+                    if (frame.file) {
+                        const img = new Image();
+                        img.src = frame.file;
+                        img.onload = () => {
+                            const aspectRatio = img.naturalWidth / img.naturalHeight;
+                            cameraContainer.style.aspectRatio = aspectRatio;
+                            frameImage.src = frame.file;
+                            frameImage.classList.remove('hidden');
+                        };
+                        img.onerror = () => {
+                             console.error(`Error loading frame: ${frame.file}.`);
+                        }
+                    } else {
+                        cameraContainer.style.aspectRatio = '16 / 9';
+                        frameImage.src = '';
+                        frameImage.classList.add('hidden');
+                    }
+                });
+                frameButtonsContainer.appendChild(btn);
+            });
+        }
+
+        video.addEventListener('play', () => {
+            loaderContainer.style.display = 'none';
+            frameSelection.classList.remove('hidden');
+            userAction.classList.remove('hidden');
+
+            const displaySize = { width: video.clientWidth, height: video.clientHeight };
+            faceapi.matchDimensions(trackerCanvas, displaySize);
+
+            setInterval(async () => {
+                // --- MODIFIED: Using the more precise model for detection ---
+                const detections = await faceapi.detectAllFaces(video, new faceapi.SsdMobilenetv1Options()).withFaceLandmarks();
+                faceDetected = detections.length > 0;
+
+                const resizedDetections = faceapi.resizeResults(detections, displaySize);
+                const ctx = trackerCanvas.getContext('2d');
+                ctx.clearRect(0, 0, trackerCanvas.width, trackerCanvas.height);
+
+                if (resizedDetections && resizedDetections.length > 0) {
+                    ctx.save();
+                    ctx.scale(-1, 1);
+                    ctx.translate(-trackerCanvas.width, 0);
+                    faceapi.draw.drawFaceLandmarks(trackerCanvas, resizedDetections);
+                    ctx.restore();
+                }
+            }, 100);
+        });
+
+        // --- EVENT LISTENERS ---
+        scanBtn.addEventListener('click', () => {
+            const name = nameInput.value.trim();
+            if (!name) {
+                alert('Mohon masukkan nama Anda.');
+                return;
+            }
+            if (!faceDetected) {
+                alert('Wajah tidak terdeteksi. Pastikan wajah Anda terlihat jelas di kamera.');
+                return;
+            }
+
+            welcomeName.innerText = name;
+            welcomeModal.classList.remove('hidden');
+            setTimeout(() => {
+                modalContent.classList.remove('scale-95', 'opacity-0');
+            }, 10);
+        });
+
+        closeModalBtn.addEventListener('click', () => {
+            modalContent.classList.add('scale-95', 'opacity-0');
+            setTimeout(() => {
+                welcomeModal.classList.add('hidden');
+            }, 300);
+        });
+
+        // --- INITIALIZATION ---
+        async function initializeApp() {
+            await loadModels();
+            buildFrameButtons();
+            await startVideo();
+        }
+
+        initializeApp();
+
+    </script>
+</body>
+</html>
